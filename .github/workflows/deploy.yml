@@ -34,8 +34,9 @@ jobs:
       - name: Configure AWS (OIDC)
         uses: aws-actions/configure-aws-credentials@v4
         with:
-          role-to-assume: arn:aws:iam::585768139627:oidc-provider/token.actions.githubusercontent.com
+          role-to-assume: arn:aws:iam::585768139627:role/Dev
           aws-region: us-west-2
+          role-session-name: GitHubActions-${{ github.run_id }}
       # --- Sanity check: confirms the role was assumed ---
       - name: Who am I? (STS)
         run: aws sts get-caller-identity
