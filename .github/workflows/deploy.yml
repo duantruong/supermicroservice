@@ -34,8 +34,8 @@ jobs:
       - name: Configure AWS (OIDC)
         uses: aws-actions/configure-aws-credentials@v4
         with:
-          role-to-assume: ${{ vars.AWS_ROLE_ARN || secrets.AWS_ROLE_ARN }}
-          aws-region: ${{ vars.AWS_REGION || 'us-west-2' }}
+          role-to-assume: arn:aws:iam::585768139627:oidc-provider/token.actions.githubusercontent.com
+          aws-region: us-west-2
       # --- Sanity check: confirms the role was assumed ---
       - name: Who am I? (STS)
         run: aws sts get-caller-identity
