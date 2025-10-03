@@ -1,47 +1,62 @@
-name: Deploy Frontend to S3 (+ CloudFront)
+name: Deploy to S3 + CloudFront
 
 on:
   push:
-    branches: [main] # deploy on pushes to main
-  workflow_dispatch: {} # allow manual runs
+    branches: ["main"] # change if you deploy from a different branch
 
 permissions:
   id-token: write # required for OIDC
   contents: read
 
+concurrency:
+  group: deploy-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
-  build-and-deploy:
+  deploy:
     runs-on: ubuntu-latest
 
     steps:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Setup Node
+      # Build your app (adjust if not using Node or if output dir differs)
+      - name: Use Node
         uses: actions/setup-node@v4
         with:
           node-version: "20"
-          cache: "npm"
+      - name: Install deps
+        run: npm ci
+      - name: Build
+        run: npm run build
+        # set your build output dir: dist or build
 
-      - name: Install & Build
-        run: |
-          npm ci
-          npm run build
-          # If your build output is not "dist", change the sync folder below.
-
-      - name: Configure AWS credentials (OIDC)
+      - name: Configure AWS (OIDC)
         uses: aws-actions/configure-aws-credentials@v4
         with:
-          role-to-assume: ${{ secrets.AWS_ROLE_TO_ASSUME }}
-          aws-region: ${{ vars.AWS_REGION }}
+          role-to-assume: ${{ vars.AWS_ROLE_ARN || secrets.AWS_ROLE_ARN }}
+          aws-region: ${{ vars.AWS_REGION || 'us-west-2' }}
 
-      - name: Upload to S3
+      # Sync all static assets with long cache, EXCEPT index.html
+      - name: Sync static assets to S3
         run: |
-          aws s3 sync dist s3://${{ vars.S3_BUCKET }} --delete
+          OUTDIR="dist"  # change to "build" if CRA or whatever your output is
+          aws s3 sync "$OUTDIR" "s3://${{ vars.S3_BUCKET || secrets.S3_BUCKET }}" \
+            --delete \
+            --only-show-errors \
+            --exclude "index.html" \
+            --cache-control "max-age=31536000,public"
 
-      - name: Invalidate CloudFront (if configured)
-        if: ${{ vars.CF_DIST_ID && vars.CF_DIST_ID != '' }}
+      # Upload index.html with no-cache for instant updates
+      - name: Upload index.html (no-cache)
+        run: |
+          OUTDIR="dist"
+          aws s3 cp "$OUTDIR/index.html" "s3://${{ vars.S3_BUCKET || secrets.S3_BUCKET }}/index.html" \
+            --cache-control "no-cache,public" \
+            --content-type "text/html"
+
+      - name: Invalidate CloudFront
         run: |
           aws cloudfront create-invalidation \
-            --distribution-id ${{ vars.CF_DIST_ID }} \
+            --distribution-id ${{ vars.CLOUDFRONT_DISTRIBUTION_ID || secrets.CLOUDFRONT_DISTRIBUTION_ID }} \
             --paths "/*"
